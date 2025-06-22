@@ -64,7 +64,6 @@ impl SimpleMapRenderer {
 
 
     fn render(&mut self, width: u32, height: u32) -> wgpu::Texture {
-        debug!("🎨 Rendering simple frame: {}x{}", width, height);
         
         if self.next_texture.size().width != width || self.next_texture.size().height != height {
             let mut new_texture = Self::create_texture(&self.device, width, height);
@@ -110,7 +109,6 @@ impl SimpleMapRenderer {
         let result_texture = self.next_texture.clone();
         std::mem::swap(&mut self.next_texture, &mut self.displayed_texture);
 
-        debug!("✅ Simple frame rendered successfully");
         result_texture
     }
 }
@@ -118,14 +116,14 @@ impl SimpleMapRenderer {
 fn main() {
     // Initialize logger with explicit configuration for Slint Live-preview
     env_logger::Builder::new()
-        .filter_level(log::LevelFilter::Info)
-        .filter_module("naga", log::LevelFilter::Warn)
+        .filter_level(log::LevelFilter::Warn)  // Only warnings and errors
+        .filter_module("naga", log::LevelFilter::Off)
         .filter_module("wgpu", log::LevelFilter::Warn)
+        .filter_module("maplibre_native", log::LevelFilter::Info)  // Only our app logs
         .format_timestamp_millis()
         .init();
     
     println!("=== Simple MapLibre + Slint Demo Starting ===");
-    eprintln!("=== Simple MapLibre + Slint Demo Starting ===");
     info!("Starting Simple MapLibre + Slint demo");
     
     let mut wgpu_settings = WGPUSettings::default();
@@ -144,8 +142,7 @@ fn main() {
     // Set up map controls with detailed logging
     let app_weak_pan = app_weak.clone();
     app.on_pan_map(move |dx, dy| {
-        println!("🖱️  Pan event: dx={}, dy={}", dx, dy);
-        eprintln!("🖱️  Pan event: dx={}, dy={}", dx, dy);
+        println!("[PAN] dx={}, dy={}", dx, dy);
         info!("Pan event: dx={}, dy={}", dx, dy);
         
         if let Some(app) = app_weak_pan.upgrade() {
@@ -162,7 +159,7 @@ fn main() {
             let new_lat = current_lat + lat_offset;
             let new_lng = current_lng + lng_offset;
             
-            println!("📍 Updating position: lat={:.6} -> {:.6}, lng={:.6} -> {:.6}", 
+            println!("[MOVE] lat={:.4} -> {:.4}, lng={:.4} -> {:.4}", 
                      current_lat, new_lat, current_lng, new_lng);
             
             app.set_latitude(new_lat);
@@ -175,8 +172,7 @@ fn main() {
 
     let app_weak_zoom = app_weak.clone();
     app.on_zoom_changed(move |zoom| {
-        println!("🔍 Zoom changed: {}", zoom);
-        eprintln!("🔍 Zoom changed: {}", zoom);
+        println!("[ZOOM] {}", zoom);
         info!("Zoom changed: {}", zoom);
         
         if let Some(app) = app_weak_zoom.upgrade() {
@@ -187,8 +183,7 @@ fn main() {
 
     let app_weak_reset = app_weak.clone();
     app.on_reset_view(move || {
-        println!("🏠 Reset view to Tokyo");
-        eprintln!("🏠 Reset view to Tokyo");
+        println!("[RESET] Back to Tokyo");
         info!("Reset view to Tokyo");
         
         if let Some(app) = app_weak_reset.upgrade() {
@@ -242,17 +237,12 @@ fn main() {
                         let lng = app.get_longitude();
                         let zoom = app.get_zoom_level();
                         
-                        // Debug current map state
-                        debug!("🗺️  Rendering frame - lat: {:.6}, lng: {:.6}, zoom: {:.2}", lat, lng, zoom);
-                        
                         // Update map state
                         renderer.update_viewport(lat, lng, zoom);
 
                         // Render simple map
                         let texture = renderer.render(512, 512);
                         app.set_rendered_map(slint::Image::try_from(texture).unwrap());
-                        
-                        debug!("✅ Frame rendered successfully");
                     } else {
                         debug!("⚠️  Skipping render - renderer or app not available");
                     }
