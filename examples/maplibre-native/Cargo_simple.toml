@@ -13,7 +13,7 @@ publish = false
 [workspace]
 
 [[bin]]
-path = "main_test.rs"
+path = "main_simple.rs"
 name = "maplibre-native"
 
 [dependencies]

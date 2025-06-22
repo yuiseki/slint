@@ -3,23 +3,14 @@
 
 slint::include_modules!();
 
-mod lib;
-
 use slint::wgpu_24::{wgpu, WGPUConfiguration, WGPUSettings};
 use log::{info, warn, error, debug};
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use lib::{MapLibreMap, create_map, set_camera, set_style, render_frame, get_texture_id};
 
-struct MapRenderer {
+struct SimpleMapRenderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
     displayed_texture: wgpu::Texture,
     next_texture: wgpu::Texture,
-    start_time: std::time::Instant,
-    
-    // MapLibre Native integration
-    maplibre_map: Option<cxx::UniquePtr<MapLibreMap>>,
     
     // Map state
     latitude: f32,
@@ -27,22 +18,13 @@ struct MapRenderer {
     zoom: f32,
     pan_x: f32,
     pan_y: f32,
-    style_loaded: bool,
 }
 
-impl MapRenderer {
+impl SimpleMapRenderer {
     fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
-        println!("🏗️  Creating MapRenderer with MapLibre Native integration");
-        eprintln!("🏗️  Creating MapRenderer with MapLibre Native integration");
-        info!("Creating MapRenderer with MapLibre Native integration");
-        
-        // Create MapLibre Native map instance
-        println!("📦 Creating MapLibre Native map instance (512x512)");
-        eprintln!("📦 Creating MapLibre Native map instance (512x512)");
-        let maplibre_map = create_map(512, 512);
-        println!("✅ MapLibre Native map created successfully");
-        eprintln!("✅ MapLibre Native map created successfully");
-        info!("MapLibre Native map created");
+        println!("🏗️  Creating SimpleMapRenderer (without MapLibre Native)");
+        eprintln!("🏗️  Creating SimpleMapRenderer (without MapLibre Native)");
+        info!("Creating SimpleMapRenderer");
         
         let displayed_texture = Self::create_texture(&device, 512, 512);
         let next_texture = Self::create_texture(&device, 512, 512);
@@ -52,20 +34,17 @@ impl MapRenderer {
             queue: queue.clone(),
             displayed_texture,
             next_texture,
-            start_time: std::time::Instant::now(),
-            maplibre_map: Some(maplibre_map),
             latitude: 35.6762,   // Tokyo
             longitude: 139.6503,
             zoom: 10.0,
             pan_x: 0.0,
             pan_y: 0.0,
-            style_loaded: false,
         }
     }
 
     fn create_texture(device: &wgpu::Device, width: u32, height: u32) -> wgpu::Texture {
         device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Map Texture"),
+            label: Some("Simple Map Texture"),
             size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
             mip_level_count: 1,
             sample_count: 1,
@@ -76,86 +55,21 @@ impl MapRenderer {
         })
     }
 
-    fn load_osm_bright_style(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(ref mut map) = self.maplibre_map {
-            println!("🎨 Loading OSM Bright style with vector tiles");
-            eprintln!("🎨 Loading OSM Bright style with vector tiles");
-            info!("Loading OSM Bright style");
-            
-            // OSM Bright style JSON (simplified for demo)
-            let style_json = r#"{
-                "version": 8,
-                "name": "OSM Bright",
-                "sources": {
-                    "openmaptiles": {
-                        "type": "vector",
-                        "url": "https://tile.openstreetmap.jp/data/planet.json"
-                    }
-                },
-                "layers": [
-                    {
-                        "id": "background",
-                        "type": "background",
-                        "paint": {
-                            "background-color": "#f8f4f0"
-                        }
-                    },
-                    {
-                        "id": "water",
-                        "type": "fill",
-                        "source": "openmaptiles",
-                        "source-layer": "water",
-                        "paint": {
-                            "fill-color": "#73b6e6"
-                        }
-                    },
-                    {
-                        "id": "transportation",
-                        "type": "line",
-                        "source": "openmaptiles",
-                        "source-layer": "transportation",
-                        "paint": {
-                            "line-color": "#fea",
-                            "line-width": 2
-                        }
-                    }
-                ]
-            }"#;
-            
-            let success = set_style(map.pin_mut(), style_json);
-            if success {
-                println!("✅ OSM Bright style loaded successfully");
-                eprintln!("✅ OSM Bright style loaded successfully");
-                info!("OSM Bright style loaded successfully");
-                self.style_loaded = true;
-                Ok(())
-            } else {
-                println!("❌ Failed to load OSM Bright style");
-                eprintln!("❌ Failed to load OSM Bright style");
-                error!("Failed to load OSM Bright style");
-                Err("Failed to load style".into())
-            }
-        } else {
-            Err("MapLibre map not initialized".into())
-        }
-    }
-
     fn update_viewport(&mut self, lat: f32, lng: f32, zoom: f32) {
         if self.latitude != lat || self.longitude != lng || self.zoom != zoom {
             println!("📍 Viewport update: lat={:.6}, lng={:.6}, zoom={:.2}", lat, lng, zoom);
+            eprintln!("📍 Viewport update: lat={:.6}, lng={:.6}, zoom={:.2}", lat, lng, zoom);
             self.latitude = lat;
             self.longitude = lng;
             self.zoom = zoom;
-            
-            if let Some(ref mut map) = self.maplibre_map {
-                debug!("Updating camera: lat={}, lng={}, zoom={}", lat, lng, zoom);
-                set_camera(map.pin_mut(), lat as f64, lng as f64, zoom as f64);
-                println!("✅ Camera updated in MapLibre Native");
-            }
+            println!("✅ Viewport updated in simple renderer");
         }
     }
 
     fn pan(&mut self, dx: f32, dy: f32) {
+        println!("🖱️  Pan operation: dx={}, dy={}", dx, dy);
+        eprintln!("🖱️  Pan operation: dx={}, dy={}", dx, dy);
+        
         let scale = 1.0 / self.zoom;
         self.pan_x += dx * scale;
         self.pan_y += dy * scale;
@@ -172,6 +86,9 @@ impl MapRenderer {
     }
 
     fn reset_view(&mut self) {
+        println!("🔄 Resetting view to Tokyo");
+        eprintln!("🔄 Resetting view to Tokyo");
+        
         self.latitude = 35.6762;
         self.longitude = 139.6503;
         self.zoom = 10.0;
@@ -182,61 +99,53 @@ impl MapRenderer {
     }
 
     fn render(&mut self, width: u32, height: u32) -> wgpu::Texture {
-        debug!("Rendering frame: {}x{}", width, height);
+        debug!("🎨 Rendering simple frame: {}x{}", width, height);
         
         if self.next_texture.size().width != width || self.next_texture.size().height != height {
             let mut new_texture = Self::create_texture(&self.device, width, height);
             std::mem::swap(&mut self.next_texture, &mut new_texture);
         }
 
-        // Load style if not loaded yet
-        if !self.style_loaded {
-            if let Err(e) = self.load_osm_bright_style() {
-                warn!("Failed to load style: {}", e);
-            }
+        // Create a simple gradient based on map position and zoom
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { 
+            label: Some("Simple Map Render Encoder") 
+        });
+
+        // Create a color based on zoom and position for visual feedback
+        let zoom_factor = (self.zoom - 1.0) / 19.0; // Normalize zoom to 0-1
+        let lat_factor = (self.latitude + 90.0) / 180.0; // Normalize latitude to 0-1
+        let lng_factor = (self.longitude + 180.0) / 360.0; // Normalize longitude to 0-1
+        
+        let clear_color = wgpu::Color { 
+            r: lng_factor as f64, 
+            g: lat_factor as f64, 
+            b: zoom_factor as f64, 
+            a: 1.0 
+        };
+
+        {
+            let _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Simple Map Clear Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.next_texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(clear_color),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
         }
 
-        // Render using MapLibre Native
-        if let Some(ref mut map) = self.maplibre_map {
-            debug!("Triggering MapLibre Native render");
-            if render_frame(map.pin_mut()) {
-                debug!("MapLibre Native render successful");
-                
-                // TODO: Get the OpenGL texture from MapLibre Native and copy to WGPU texture
-                // For now, we'll create a placeholder
-                let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { 
-                    label: Some("Map Render Encoder") 
-                });
-
-                // Clear with a map-like color
-                {
-                    let _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("Map Clear Pass"),
-                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: &self.next_texture.create_view(&wgpu::TextureViewDescriptor::default()),
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.8, g: 0.9, b: 0.8, a: 1.0 }),
-                                store: wgpu::StoreOp::Store,
-                            },
-                        })],
-                        depth_stencil_attachment: None,
-                        timestamp_writes: None,
-                        occlusion_query_set: None,
-                    });
-                }
-
-                self.queue.submit(Some(encoder.finish()));
-            } else {
-                warn!("MapLibre Native render failed");
-            }
-        } else {
-            warn!("MapLibre map not initialized");
-        }
+        self.queue.submit(Some(encoder.finish()));
 
         let result_texture = self.next_texture.clone();
         std::mem::swap(&mut self.next_texture, &mut self.displayed_texture);
 
+        debug!("✅ Simple frame rendered successfully");
         result_texture
     }
 }
@@ -249,9 +158,9 @@ async fn main() {
         .format_timestamp_millis()
         .init();
     
-    println!("=== MapLibre Native + Slint Demo Starting ===");
-    eprintln!("=== MapLibre Native + Slint Demo Starting ===");
-    info!("Starting MapLibre Native + Slint demo");
+    println!("=== Simple MapLibre + Slint Demo Starting ===");
+    eprintln!("=== Simple MapLibre + Slint Demo Starting ===");
+    info!("Starting Simple MapLibre + Slint demo");
     
     let mut wgpu_settings = WGPUSettings::default();
     wgpu_settings.device_required_features = wgpu::Features::empty();
@@ -266,7 +175,7 @@ async fn main() {
     let mut map_renderer = None;
     let app_weak = app.as_weak();
 
-    // Set up map controls
+    // Set up map controls with detailed logging
     let app_weak_pan = app_weak.clone();
     app.on_pan_map(move |dx, dy| {
         println!("🖱️  Pan event: dx={}, dy={}", dx, dy);
@@ -274,7 +183,7 @@ async fn main() {
         info!("Pan event: dx={}, dy={}", dx, dy);
         
         if let Some(app) = app_weak_pan.upgrade() {
-            info!("Applying pan offset and requesting redraw");
+            info!("Requesting redraw after pan");
             app.window().request_redraw();
         }
     });
@@ -321,18 +230,18 @@ async fn main() {
         .set_rendering_notifier(move |state, graphics_api| {
             match state {
                 slint::RenderingState::RenderingSetup => {
-                    println!("🚀 Setting up rendering with MapLibre Native");
-                    eprintln!("🚀 Setting up rendering with MapLibre Native");
-                    info!("Setting up rendering with MapLibre Native");
+                    println!("🚀 Setting up simple rendering");
+                    eprintln!("🚀 Setting up simple rendering");
+                    info!("Setting up simple rendering");
                     
                     match graphics_api {
                         slint::GraphicsAPI::WGPU24 { device, queue, .. } => {
-                            println!("✅ WGPU24 backend detected, creating MapRenderer");
-                            eprintln!("✅ WGPU24 backend detected, creating MapRenderer");
-                            map_renderer = Some(MapRenderer::new(device, queue));
-                            println!("✅ MapRenderer initialized successfully");
-                            eprintln!("✅ MapRenderer initialized successfully");
-                            info!("MapRenderer initialized");
+                            println!("✅ WGPU24 backend detected, creating SimpleMapRenderer");
+                            eprintln!("✅ WGPU24 backend detected, creating SimpleMapRenderer");
+                            map_renderer = Some(SimpleMapRenderer::new(device, queue));
+                            println!("✅ SimpleMapRenderer initialized successfully");
+                            eprintln!("✅ SimpleMapRenderer initialized successfully");
+                            info!("SimpleMapRenderer initialized");
                         }
                         _ => {
                             println!("❌ Unsupported graphics API");
@@ -354,7 +263,7 @@ async fn main() {
                         // Update map state
                         renderer.update_viewport(lat, lng, zoom);
 
-                        // Render map to texture using MapLibre Native
+                        // Render simple map
                         let texture = renderer.render(512, 512);
                         app.set_rendered_map(slint::Image::try_from(texture).unwrap());
                         
@@ -365,9 +274,9 @@ async fn main() {
                 }
                 slint::RenderingState::AfterRendering => {}
                 slint::RenderingState::RenderingTeardown => {
-                    println!("🧹 Cleaning up MapRenderer");
-                    eprintln!("🧹 Cleaning up MapRenderer");
-                    info!("Cleaning up MapRenderer");
+                    println!("🧹 Cleaning up SimpleMapRenderer");
+                    eprintln!("🧹 Cleaning up SimpleMapRenderer");
+                    info!("Cleaning up SimpleMapRenderer");
                     drop(map_renderer.take());
                 }
                 _ => {}
@@ -375,6 +284,8 @@ async fn main() {
         })
         .expect("Unable to set rendering notifier");
 
+    println!("🎮 Running Slint application with detailed logging");
+    eprintln!("🎮 Running Slint application with detailed logging");
     info!("Running Slint application");
     app.run().unwrap();
 }
