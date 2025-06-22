@@ -31,3 +31,4 @@ uv.lock
 .python-version
 
 MODULE.bazel.lock
+target/
