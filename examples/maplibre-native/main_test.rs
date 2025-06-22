@@ -4,7 +4,7 @@
 slint::include_modules!();
 
 use slint::wgpu_24::{wgpu, WGPUConfiguration, WGPUSettings};
-use log::{info, warn, error, debug};
+use log::{info, error, debug};
 
 struct SimpleMapRenderer {
     device: wgpu::Device,
@@ -16,8 +16,6 @@ struct SimpleMapRenderer {
     latitude: f32,
     longitude: f32,
     zoom: f32,
-    pan_x: f32,
-    pan_y: f32,
 }
 
 impl SimpleMapRenderer {
@@ -37,8 +35,6 @@ impl SimpleMapRenderer {
             latitude: 35.6762,   // Tokyo
             longitude: 139.6503,
             zoom: 10.0,
-            pan_x: 0.0,
-            pan_y: 0.0,
         }
     }
 
@@ -66,37 +62,6 @@ impl SimpleMapRenderer {
         }
     }
 
-    fn pan(&mut self, dx: f32, dy: f32) {
-        println!("🖱️  Pan operation: dx={}, dy={}", dx, dy);
-        eprintln!("🖱️  Pan operation: dx={}, dy={}", dx, dy);
-        
-        let scale = 1.0 / self.zoom;
-        self.pan_x += dx * scale;
-        self.pan_y += dy * scale;
-        
-        // Convert pan to lat/lng offset
-        let lat_offset = dy * scale * 0.001;
-        let lng_offset = dx * scale * 0.001;
-        
-        self.update_viewport(
-            self.latitude + lat_offset, 
-            self.longitude + lng_offset, 
-            self.zoom
-        );
-    }
-
-    fn reset_view(&mut self) {
-        println!("🔄 Resetting view to Tokyo");
-        eprintln!("🔄 Resetting view to Tokyo");
-        
-        self.latitude = 35.6762;
-        self.longitude = 139.6503;
-        self.zoom = 10.0;
-        self.pan_x = 0.0;
-        self.pan_y = 0.0;
-        
-        self.update_viewport(self.latitude, self.longitude, self.zoom);
-    }
 
     fn render(&mut self, width: u32, height: u32) -> wgpu::Texture {
         debug!("🎨 Rendering simple frame: {}x{}", width, height);
@@ -182,6 +147,25 @@ fn main() {
         info!("Pan event: dx={}, dy={}", dx, dy);
         
         if let Some(app) = app_weak_pan.upgrade() {
+            // Apply pan to current lat/lng
+            let current_lat = app.get_latitude();
+            let current_lng = app.get_longitude();
+            let current_zoom = app.get_zoom_level();
+            
+            // Convert screen pan to lat/lng offset
+            let scale = 1.0 / current_zoom;
+            let lat_offset = dy * scale * 0.001;
+            let lng_offset = dx * scale * 0.001;
+            
+            let new_lat = current_lat + lat_offset;
+            let new_lng = current_lng + lng_offset;
+            
+            println!("📍 Updating position: lat={:.6} -> {:.6}, lng={:.6} -> {:.6}", 
+                     current_lat, new_lat, current_lng, new_lng);
+            
+            app.set_latitude(new_lat);
+            app.set_longitude(new_lng);
+            
             info!("Requesting redraw after pan");
             app.window().request_redraw();
         }
