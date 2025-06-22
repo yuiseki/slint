@@ -118,7 +118,9 @@ impl SimpleMapRenderer {
 fn main() {
     // Initialize logger with explicit configuration for Slint Live-preview
     env_logger::Builder::new()
-        .filter_level(log::LevelFilter::Debug)
+        .filter_level(log::LevelFilter::Info)
+        .filter_module("naga", log::LevelFilter::Warn)
+        .filter_module("wgpu", log::LevelFilter::Warn)
         .format_timestamp_millis()
         .init();
     
