@@ -484,7 +484,7 @@ if (SLINT_BUILD_RUNTIME)
     endif()
 
     export(TARGETS Slint slint_cpp
-        NAMESPACE Slint:: FILE "${CMAKE_BINARY_DIR}/lib/cmake/Slint/SlintTargets.cmake")
+        NAMESPACE Slint:: FILE "${CMAKE_CURRENT_BINARY_DIR}/lib/cmake/Slint/SlintTargets.cmake")
     install(EXPORT SlintTargets NAMESPACE Slint:: DESTINATION lib/cmake/Slint)
     install(TARGETS Slint slint_cpp
         EXPORT SlintTargets LIBRARY DESTINATION lib PUBLIC_HEADER DESTINATION include/slint)
@@ -514,36 +514,65 @@ if(SLINT_BUILD_RUNTIME)
     # locations. Since we are writing to a config file Generator expressions are not
     # an option.
     function(_slint_write_configure_file)
-        foreach(prop
-            IMPORTED_LOCATION IMPORTED_LOCATION_DEBUG IMPORTED_LOCATION_RELEASE
-            IMPORTED_LOCATION_RELWITHDEBINFO IMPORTED_LOCATION_MINSIZEREL
-            IMPORTED_IMPLIB IMPORTED_IMPLIB_DEBUG IMPORTED_IMPLIB_RELEASE
-            IMPORTED_IMPLIB_RELWITHDEBINFO IMPORTED_IMPLIB_MINSIZEREL)
-            get_target_property(value ${slint_cpp_impl} ${prop})
-
-            if(value)
-                get_filename_component(value ${value} NAME)
-                list(APPEND SLINT_LIB_PROPERTIES ${prop} "\${_IMPORT_PREFIX}/${CMAKE_INSTALL_LIBDIR}/${value}")
-            endif()
-        endforeach()
-
-        # Corrosion sets IMPORTED_NO_SONAME and for macOS we reset that
-        # and set IMPORTED_SONAME. Make sure to propagate these locally
-        # set properties also to the installed cmake target.
-        foreach(prop IMPORTED_NO_SONAME IMPORTED_SONAME)
-            get_target_property(value ${slint_cpp_impl} ${prop})
-            if(value)
-                list(APPEND SLINT_LIB_PROPERTIES ${prop} ${value})
-            endif()
-        endforeach()
-
         get_property(_SLINT_STYLE GLOBAL PROPERTY SLINT_STYLE)
         if (TARGET slint-compiler)
             get_target_property(_slint_compiler_location slint-compiler IMPORTED_LOCATION)
             cmake_path(GET _slint_compiler_location FILENAME SLINT_COMPILER_FILE_NAME)
         endif()
 
-        configure_package_config_file("cmake/SlintConfig.cmake.in" "${CMAKE_CURRENT_BINARY_DIR}/lib/cmake/Slint/SlintConfig.cmake" INSTALL_DESTINATION lib/cmake/Slint)
+        # --- Install-tree config: library paths relative to the install prefix,
+        #     slint-compiler resolved under the install prefix. ---
+        set(SLINT_LIB_PROPERTIES "")
+        foreach(prop
+            IMPORTED_LOCATION IMPORTED_LOCATION_DEBUG IMPORTED_LOCATION_RELEASE
+            IMPORTED_LOCATION_RELWITHDEBINFO IMPORTED_LOCATION_MINSIZEREL
+            IMPORTED_IMPLIB IMPORTED_IMPLIB_DEBUG IMPORTED_IMPLIB_RELEASE
+            IMPORTED_IMPLIB_RELWITHDEBINFO IMPORTED_IMPLIB_MINSIZEREL)
+            get_target_property(value ${slint_cpp_impl} ${prop})
+            if(value)
+                get_filename_component(value ${value} NAME)
+                list(APPEND SLINT_LIB_PROPERTIES ${prop} "\${_IMPORT_PREFIX}/${CMAKE_INSTALL_LIBDIR}/${value}")
+            endif()
+        endforeach()
+        foreach(prop IMPORTED_NO_SONAME IMPORTED_SONAME)
+            get_target_property(value ${slint_cpp_impl} ${prop})
+            if(value)
+                list(APPEND SLINT_LIB_PROPERTIES ${prop} ${value})
+            endif()
+        endforeach()
+        set(SLINT_COMPILER "")
+        configure_package_config_file("cmake/SlintConfig.cmake.in"
+            "${CMAKE_CURRENT_BINARY_DIR}/cmake-install/SlintConfig.cmake"
+            INSTALL_DESTINATION lib/cmake/Slint)
+
+        # --- Build-tree config: absolute paths into this build tree so that
+        #     find_package(Slint) works directly from the build directory, e.g.
+        #     when Slint is consumed via add_subdirectory()/FetchContent. ---
+        set(SLINT_LIB_PROPERTIES "")
+        foreach(prop
+            IMPORTED_LOCATION IMPORTED_LOCATION_DEBUG IMPORTED_LOCATION_RELEASE
+            IMPORTED_LOCATION_RELWITHDEBINFO IMPORTED_LOCATION_MINSIZEREL
+            IMPORTED_IMPLIB IMPORTED_IMPLIB_DEBUG IMPORTED_IMPLIB_RELEASE
+            IMPORTED_IMPLIB_RELWITHDEBINFO IMPORTED_IMPLIB_MINSIZEREL)
+            get_target_property(value ${slint_cpp_impl} ${prop})
+            if(value)
+                list(APPEND SLINT_LIB_PROPERTIES ${prop} "${value}")
+            endif()
+        endforeach()
+        foreach(prop IMPORTED_NO_SONAME IMPORTED_SONAME)
+            get_target_property(value ${slint_cpp_impl} ${prop})
+            if(value)
+                list(APPEND SLINT_LIB_PROPERTIES ${prop} ${value})
+            endif()
+        endforeach()
+        set(SLINT_COMPILER "${_slint_compiler_location}")
+        configure_package_config_file("cmake/SlintConfig.cmake.in"
+            "${CMAKE_CURRENT_BINARY_DIR}/lib/cmake/Slint/SlintConfig.cmake"
+            INSTALL_DESTINATION lib/cmake/Slint)
+        # SlintMacro.cmake must sit next to the build-tree config so its
+        # include() from SlintConfig.cmake resolves.
+        file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/cmake/SlintMacro.cmake"
+            DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/lib/cmake/Slint")
     endfunction()
 
     cmake_language(DEFER CALL _slint_write_configure_file)
@@ -555,7 +584,7 @@ if(SLINT_BUILD_RUNTIME)
     )
 
     install(FILES
-        "${CMAKE_CURRENT_BINARY_DIR}/lib/cmake/Slint/SlintConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/cmake-install/SlintConfig.cmake"
         "${CMAKE_CURRENT_BINARY_DIR}/lib/cmake/Slint/SlintConfigVersion.cmake"
         "${CMAKE_CURRENT_LIST_DIR}/cmake/SlintMacro.cmake"
         DESTINATION lib/cmake/Slint
